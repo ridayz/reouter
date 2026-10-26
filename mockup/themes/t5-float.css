@@ -1,0 +1,21 @@
+/* T5 · FLOAT — sidebar pindah jadi bar atas, kartu besar & lega */
+.app { flex-direction: column; }
+.side { width: auto; flex: none; flex-direction: row; align-items: center; gap: 12px; border-right: none; border-bottom: 1px solid var(--line); padding: 12px 18px; position: sticky; top: 0; z-index: 4; background: rgba(9,10,16,.88); }
+.brand { padding: 0; }
+.side-foot { display: none; }
+.nav { flex-direction: row; flex-wrap: wrap; margin: 0 0 0 auto; gap: 4px; }
+.nav-item { width: auto; padding: 8px 12px; }
+.nav-item:hover { padding-left: 12px; }
+.nav-item.on::before { display: none; }
+.main { width: 100%; max-width: 1280px; margin: 0 auto; padding: 28px 22px 90px; }
+.top { border-bottom: none; padding-bottom: 8px; margin-bottom: 12px; }
+.card { border-radius: var(--r-lg); padding: 22px; }
+.metric { border-radius: var(--r-lg); padding: 16px; }
+.strip { grid-template-columns: repeat(6, 1fr); gap: 12px; }
+#menuBtn { display: none !important; }
+@media (max-width: 800px) {
+  .side { position: sticky; transform: none !important; flex-wrap: wrap; padding: 10px 14px; }
+  .nav { width: 100%; margin: 0; overflow-x: auto; flex-wrap: nowrap; }
+  .main { padding: 18px 14px 80px; }
+  .strip { grid-template-columns: repeat(2, 1fr); }
+}

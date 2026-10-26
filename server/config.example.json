@@ -1,0 +1,17 @@
+{
+  "port": 9301,
+  "providers": [
+    {
+      "id": "openai",
+      "name": "OpenAI",
+      "planet": "",
+      "enabled": false,
+      "priority": 1,
+      "baseUrl": "https://api.openai.com/v1",
+      "apiKey": "",
+      "models": [],
+      "pricing": {}
+    }
+  ],
+  "routing": { "mode": "failover", "strategy": "priority" }
+}
