@@ -1,0 +1,15 @@
+{
+  "name": "reouter",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "ReOUTER — local AI rotator: one OpenAI-compatible endpoint, many providers, automatic failover",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node --watch server/index.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2"
+  }
+}
