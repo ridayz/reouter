@@ -6,8 +6,10 @@
  */
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
-const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1")), "..");
+// fileURLToPath: URL-encoding (spasi jadi %20) dan drive letter Windows ditangani benar
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 export const DATA_DIR = path.join(ROOT, "data");
 const CONFIG_PATH = path.join(DATA_DIR, "config.json");
 
@@ -23,7 +25,7 @@ const PILIHAN_PLANET = [
 ];
 
 const DEFAULT_STATE = {
-  mode: "failover", // failover | round
+  mode: "auto", // auto (AI terbaik) | failover (prioritas) | round
   providers: [],
 };
 
@@ -34,7 +36,7 @@ function load() {
     if (fs.existsSync(CONFIG_PATH)) {
       const raw = JSON.parse(fs.readFileSync(CONFIG_PATH, "utf8"));
       state = {
-        mode: raw.mode === "round" ? "round" : "failover",
+        mode: ["auto", "failover", "round"].includes(raw.mode) ? raw.mode : "auto",
         providers: Array.isArray(raw.providers) ? raw.providers : [],
       };
       return;
@@ -50,10 +52,24 @@ export function getState() {
   return state;
 }
 
-export function saveState() {
+let saveTimer = null;
+
+/** Tulis ke disk: langsung, atau digabung (debounce) kalau dipanggil beruntun. */
+export function saveState({ defer = false } = {}) {
   if (!state) return;
+  if (defer) {
+    if (saveTimer) return;
+    saveTimer = setTimeout(() => {
+      saveTimer = null;
+      saveState();
+    }, 400);
+    if (saveTimer.unref) saveTimer.unref();
+    return;
+  }
   fs.mkdirSync(DATA_DIR, { recursive: true });
-  fs.writeFileSync(CONFIG_PATH, JSON.stringify(state, null, 2), "utf8");
+  const tmp = CONFIG_PATH + ".tmp";
+  fs.writeFileSync(tmp, JSON.stringify(state, null, 2), "utf8");
+  fs.renameSync(tmp, CONFIG_PATH);
 }
 
 export function nextPlanet() {
@@ -81,11 +97,14 @@ export function publicProvider(p) {
     c2: p.c2,
     glow: p.glow,
     baseUrl: p.baseUrl,
+    kind: p.kind || guessKindClient(p.baseUrl),
     priority: p.priority,
     enabled: p.enabled,
     hasKey: Boolean(p.apiKey),
     keyHint: maskKey(p.apiKey),
     status: p.status || "unknown",
+    latency: p.latency || 0,
+    stats: p.stats || null,
     models: p.models || [],
     picked: p.picked || [],
     tokens: p.tokens || { used: 0, limit: 0 },
@@ -93,6 +112,13 @@ export function publicProvider(p) {
     lastError: p.lastError || null,
     cooldownUntil: p.cooldownUntil || 0,
   };
+}
+
+function guessKindClient(baseUrl) {
+  const u = String(baseUrl || "").toLowerCase();
+  if (u.includes("anthropic.com")) return "anthropic";
+  if (u.includes("generativelanguage")) return "gemini";
+  return "openai";
 }
 
 export function publicState() {

@@ -4,7 +4,7 @@
  *  Dashboard (dipakai UI)   : /api/*
  *  Gateway untuk CLI coding : /v1/chat/completions, /v1/models   (OpenAI-compatible)
  *  Adapter Anthropic        : /anthropic/v1/messages             (buat Claude Code)
- *  UI                       : /  (file mockup/v3.html)
+ *  UI                       : /  (folder public/)
  */
 import express from "express";
 import path from "node:path";
@@ -20,8 +20,9 @@ import {
   maskKey,
 } from "./config.js";
 import { listModels, PROVIDER_PRESETS, guessKind } from "./providers.js";
-import { routeChat, activeModelIds, getEvents, pushEvent, getStats } from "./rotator.js";
-import { modelBadges } from "./modelinfo.js";
+import { routeChat, activeModelIds, getEvents, pushEvent, getStats, getRanking, recordProbe } from "./rotator.js";
+import { modelBadges, modelInfo } from "./modelinfo.js";
+import { detectProvider } from "./detect.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "..");
@@ -49,7 +50,13 @@ app.get("/api/state", (req, res) => {
     p.modelInfo = {};
     for (const m of p.models) p.modelInfo[m] = modelBadges(m);
   }
-  res.json({ ...state, presets: PROVIDER_PRESETS, events: getEvents().slice(-60), stats: getStats() });
+  res.json({
+    ...state,
+    presets: PROVIDER_PRESETS,
+    events: getEvents().slice(-60),
+    stats: getStats(),
+    ranking: getRanking(),
+  });
 });
 
 /** Info harga satu model (dipakai UI kalau butuh detail). */
@@ -61,13 +68,38 @@ app.get("/api/model-info", (req, res) => {
 
 app.post("/api/mode", (req, res) => {
   const s = getState();
-  s.mode = req.body?.mode === "round" ? "round" : "failover";
+  const m = req.body?.mode;
+  s.mode = ["auto", "failover", "round"].includes(m) ? m : "auto";
+  // prioritas 1 kembali ke provider nomor pertama kalau mode manual dipilih
+  if (m === "failover") {
+    s.providers.sort((a, b) => a.priority - b.priority).forEach((p, i) => (p.priority = i + 1));
+  }
   saveState();
   res.json({ ok: true, mode: s.mode });
 });
 
 function findProvider(id) {
   return getState().providers.find((p) => p.id === id);
+}
+
+/**
+ * Urutkan model dari yang paling kuat & cepat menurut tabel harga/kapabilitas.
+ * Dipakai untuk mengaktifkan otomatis 2 model terbaik setelah key dicek.
+ */
+function rankModels(models) {
+  const strength = (id) => {
+    const info = modelInfo(id);
+    const smart = info.smart || 2;
+    const speed = info.speed || 60;
+    const speedNorm = Math.min(1, speed / 250);
+    // hindari model preview/eksperimental kalau ada pilihan stabil
+    const unstable = /preview|experimental|exp-|alpha|beta-|latest/i.test(id) ? 0.7 : 1;
+    return (smart * 0.65 + speedNorm * 0.35) * unstable;
+  };
+  return models
+    .slice()
+    .sort((a, b) => strength(b) - strength(a))
+    .slice(0, 400);
 }
 
 app.post("/api/providers", (req, res) => {
@@ -95,6 +127,52 @@ app.post("/api/providers", (req, res) => {
   s.providers.push(p);
   saveState();
   res.json({ ok: true, provider: publicProvider(p) });
+});
+
+/**
+ * "Cek otomatis": tempel API key saja, ReOUTER menebak provider-nya sendiri,
+ * menarik daftar model, lalu langsung mengaktifkan model terbaik.
+ */
+app.post("/api/detect", async (req, res) => {
+  const key = String(req.body?.apiKey || "").trim();
+  if (!key) return res.status(400).json({ ok: false, error: "API key kosong" });
+  try {
+    const found = await detectProvider(key);
+    if (!found.ok) return res.json({ ok: false, error: "Key tidak dikenali provider mana pun", tried: found.tried });
+    const s = getState();
+    const look = nextPlanet();
+    const preset = PROVIDER_PRESETS.find((x) => x.id === found.provider);
+    let baseUrl = preset?.baseUrl || "";
+    if (found.provider === "anthropic") baseUrl = "https://api.anthropic.com";
+    if (found.provider === "gemini") baseUrl = "https://generativelanguage.googleapis.com";
+    const models = Array.isArray(found.models) ? found.models : [];
+    const ranked = rankModels(models);
+    const p = {
+      id: crypto.randomUUID().slice(0, 8),
+      name: found.name,
+      planet: look.planet,
+      c1: look.c1,
+      c2: look.c2,
+      glow: look.glow,
+      baseUrl,
+      kind: guessKind(baseUrl),
+      apiKey: key,
+      priority: s.providers.length + 1,
+      enabled: true,
+      status: "ok",
+      lastCheck: Date.now(),
+      models,
+      picked: ranked.slice(0, Math.min(2, ranked.length)),
+      tokens: { used: 0, limit: 0 },
+      cooldownUntil: 0,
+    };
+    s.providers.push(p);
+    saveState();
+    pushEvent("check", { provider: p.name, planet: p.planet, ok: true, count: models.length, ms: 0 });
+    res.json({ ok: true, provider: publicProvider(p), count: models.length });
+  } catch (err) {
+    res.json({ ok: false, error: err.message });
+  }
 });
 
 app.patch("/api/providers/:id", (req, res) => {
@@ -167,11 +245,13 @@ app.post("/api/providers/:id/check", async (req, res) => {
     p.lastError = null;
     p.lastCheck = Date.now();
     p.latency = ms;
+    recordProbe(p, ms);
     p.models = models;
     // buang picked yang sudah tidak ada
     p.picked = (p.picked || []).filter((m) => models.includes(m));
     // kalau belum ada pilihan, aktifkan beberapa model pertama
-    if (!p.picked.length && models.length) p.picked = models.slice(0, Math.min(2, models.length));
+    if (!p.picked.length && models.length) p.picked = rankModels(models).slice(0, Math.min(2, models.length));
+    p.stats = null; // mulai ukur ulang kecepatan & keandalan
     saveState();
     pushEvent("check", { provider: p.name, planet: p.planet, ok: true, count: models.length, ms });
     res.json({ ok: true, count: models.length, ms, provider: publicProvider(p) });
@@ -247,6 +327,27 @@ app.post("/v1/chat/completions", async (req, res) => {
   const body = req.body || {};
   const messages = Array.isArray(body.messages) ? body.messages : [];
   if (!messages.length) return res.status(400).json({ error: { message: "messages kosong", type: "invalid_request_error" } });
+
+  // Klien (OpenCode, CLI) umumnya kirim stream:true — jawab sebagai SSE OpenAI-compatible.
+  if (body.stream) {
+    const so = await routeChat(messages, body.model, {
+      maxTokens: body.max_tokens || body.max_completion_tokens || 1024,
+      temperature: body.temperature,
+    });
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    const sid = "chatcmpl-" + crypto.randomUUID().slice(0, 24);
+    const smodel = so.ok ? so.model : body.model || "reouter";
+    if (!so.ok) {
+      res.write("data: " + JSON.stringify({ error: { message: so.error, type: "rotator_error" } }) + "\n\n");
+      return res.end("data: [DONE]\n\n");
+    }
+    res.write("data: " + JSON.stringify({ id: sid, object: "chat.completion.chunk", created: Math.floor(Date.now() / 1000), model: smodel, choices: [{ index: 0, delta: { role: "assistant", content: "" }, finish_reason: null }] }) + "\n\n");
+    res.write("data: " + JSON.stringify({ id: sid, object: "chat.completion.chunk", model: smodel, choices: [{ index: 0, delta: { content: so.text }, finish_reason: null }] }) + "\n\n");
+    res.write("data: " + JSON.stringify({ id: sid, object: "chat.completion.chunk", model: smodel, choices: [{ index: 0, delta: {}, finish_reason: "stop" }] }) + "\n\n");
+    res.end("data: [DONE]\n\n");
+    return;
+  }
 
   const out = await routeChat(messages, body.model, {
     maxTokens: body.max_tokens || body.max_completion_tokens || 1024,
@@ -343,9 +444,17 @@ app.post("/anthropic/v1/messages", async (req, res) => {
 
 /* ======================= UI ======================= */
 
-app.use(express.static(path.join(ROOT, "mockup")));
-app.get("/", (req, res) => res.sendFile(path.join(ROOT, "mockup", "v3.html")));
-
+// Cache dimatikan: supaya perubahan CSS/JS langsung terpakai saat halaman di-reload
+// (tanpa ini browser bisa menyajikan app.css lama dan perbaikan tampilan tidak terlihat).
+app.use(
+  express.static(path.join(ROOT, "public"), {
+    etag: false,
+    lastModified: false,
+    setHeaders: (res) => res.setHeader("Cache-Control", "no-store"),
+  }),
+);
+app.get("/", (req, res) => res.sendFile(path.join(ROOT, "public", "index.html")));
+// Tampilan galaksi (versi lama) tetap bisa dibuka di /galaxy
 /* ======================= START ======================= */
 
 app.listen(PORT, HOST, () => {

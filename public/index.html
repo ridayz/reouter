@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ReOUTER — AI Gateway</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%238b5cf6'/%3E%3Ctext x='32' y='44' font-size='32' font-family='Arial' font-weight='bold' text-anchor='middle' fill='white'%3ER%3C/text%3E%3C/svg%3E" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/vendor/theme/icons.css" />
+  <link rel="stylesheet" href="/app.css" />
+</head>
+<body>
+  <div class="layout">
+    <!-- ============ Sidebar ============ -->
+    <aside class="side" id="side">
+      <a class="brand" href="#/dashboard">
+        <span class="brand-mark"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.6 3.4 7.3v9.4L12 21.4l8.6-4.7V7.3L12 2.6Zm0 2.3 6.6 3.6-6.6 3.6-6.6-3.6L12 4.9Zm-6.6 5.6 5.6 3.1v6.2l-5.6-3V10.5Zm7.6 9.3v-6.2l5.6-3.1v6.3l-5.6 3Z" fill="currentColor"/></svg></span>
+        <span class="brand-text">Re<sup>OUTER</sup></span>
+      </a>
+
+      <div class="side-label">Menu</div>
+      <nav class="side-nav" id="sideNav">
+        <a class="side-link" href="#/dashboard" data-nav="dashboard"><i class="ic ic-grid"></i><span>Dashboard</span></a>
+        <a class="side-link" href="#/setup" data-nav="setup"><i class="ic ic-plug"></i><span>Provider &amp; API Key</span></a>
+        <a class="side-link" href="#/models" data-nav="models"><i class="ic ic-cpu"></i><span>Model Aktif</span></a>
+        <a class="side-link" href="#/ranking" data-nav="ranking"><i class="ic ic-award"></i><span>Peringkat AI</span></a>
+        <a class="side-link" href="#/logs" data-nav="logs"><i class="ic ic-list"></i><span>Log Live</span></a>
+      </nav>
+
+      <div class="side-label">Pakai di projek</div>
+      <nav class="side-nav">
+        <a class="side-link" href="#/connect" data-nav="connect"><i class="ic ic-code"></i><span>Koneksikan CLI</span></a>
+      </nav>
+
+      <div class="side-help">
+        <div class="side-help-title">Butuh bantuan?</div>
+        <div class="side-help-sub">Lihat cara pakai &amp; contoh config</div>
+        <a class="side-help-btn" href="#/connect">Pelajari</a>
+      </div>
+      <div class="side-foot">v2 · berjalan lokal di mesin kamu</div>
+    </aside>
+
+    <!-- ============ Main ============ -->
+    <main class="main">
+      <header class="topbar">
+        <button class="icon-btn menu-btn" id="menuBtn" aria-label="Menu"><i class="ic ic-menu"></i></button>
+        <div class="live" id="serverBadge"><i class="dot"></i><span>LIVE</span></div>
+        <div class="topbar-spacer"></div>
+        <div class="seg" id="modeSwitch" role="group" aria-label="Mode ReOUTER">
+          <button type="button" data-mode="auto">Auto</button>
+          <button type="button" data-mode="failover">Manual</button>
+          <button type="button" data-mode="round">Rotasi</button>
+        </div>
+        <div class="range" id="rangePill">
+          <i class="ic ic-calendar"></i>
+          <input type="date" id="dateFrom" aria-label="Dari tanggal" />
+          <span>–</span>
+          <input type="date" id="dateTo" aria-label="Sampai tanggal" />
+        </div>
+        <a href="#/setup" class="btn-accent"><i class="ic ic-plus"></i><span class="d-none d-sm-inline">Tambah Provider</span></a>
+        <div class="avatar" title="Profil lokal">R</div>
+      </header>
+
+      <div class="page" id="view"></div>
+    </main>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script src="/vendor/theme/charts.js"></script>
+  <script src="/app.js"></script>
+</body>
+</html>
