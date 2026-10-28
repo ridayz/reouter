@@ -154,6 +154,8 @@
 
   // Panel #view yang menggulung (bukan jendela) — jadi posisi tiap menu disimpan di sini.
   const scrollPos = {};
+  // Keyword pencarian model per provider (biar tidak hilang saat refresh 2,5 detik).
+  const searchQuery = {};
 
   function render() {
     const name = (location.hash || "#/dashboard").replace(/^#\/?/, "").split("?")[0] || "dashboard";
@@ -481,12 +483,14 @@
             <span style="font-size:.76rem;font-weight:600;color:#d4d4d4">Model yang dipakai</span>
             <button class="chip" data-act="all">Centang semua</button>
           </div>
-          <input class="input sm i-search" placeholder="cari model…" style="margin-bottom:8px" />
+          <input class="input sm i-search" placeholder="cari model…" style="margin-bottom:8px" value="${esc(searchQuery[p.id] || "")}" />
           <div class="models">${
             models
               .map((m) => {
                 const inf = (p.modelInfo || {})[m] || {};
-                return `<label class="mrow">
+                const q = String(searchQuery[p.id] || "").trim().toLowerCase();
+                const hide = q && !m.toLowerCase().includes(q);
+                return `<label class="mrow"${hide ? ' style="display:none"' : ""}>
                   <input type="checkbox" class="m-check" data-m="${esc(m)}" ${picked.includes(m) ? "checked" : ""} />
                   <span style="min-width:0"><span class="mname mono">${esc(m)}</span><br />${modelMeta(inf)}</span>
                 </label>`;
@@ -656,6 +660,14 @@ aider --openai-api-base "$OPENAI_BASE_URL" \\
 
   /* ------------------------------ Update / Mount ------------------------------ */
   function update() {
+    // Jangan timpa DOM kalau pengguna sedang mengetik / berinteraksi di menu Setup
+    // (search model, isi nama/URL/key) — kalau ditimpa, input hilang & gulungan mental.
+    const typing = document.activeElement && document.activeElement.closest("#provList, .prov-body");
+    const searchOpen = $$("#provList .prov.open").some((d) => {
+      const s = d.querySelector(".i-search");
+      return s && s.value.trim();
+    });
+
     if (page === "dashboard") {
       const st = S.stats || {};
       const ok = S.providers.filter(ready).length;
@@ -680,7 +692,12 @@ aider --openai-api-base "$OPENAI_BASE_URL" \\
     }
     if (page === "setup") {
       const list = $("#provList");
-      if (list) {
+      if (list && !typing && !searchOpen) {
+        // Simpan dulu keyword & status buka tiap provider sebelum DOM ditimpa
+        $$("#provList .prov").forEach((d) => {
+          const s = d.querySelector(".i-search");
+          if (s) searchQuery[d.dataset.pid] = s.value;
+        });
         const open = $$("#provList .prov.open").map((d) => d.dataset.pid);
         list.innerHTML = provListHTML();
         open.forEach((id) => {
@@ -919,6 +936,9 @@ aider --openai-api-base "$OPENAI_BASE_URL" \\
     const s = e.target.closest(".i-search");
     if (!s) return;
     const q = s.value.trim().toLowerCase();
+    // simpan keyword per provider supaya tidak hilang saat refresh berkala
+    const host = s.closest("[data-pid]");
+    if (host) searchQuery[host.dataset.pid] = s.value;
     $$(".mrow", s.closest(".prov-body")).forEach((r) => {
       const hit = !q || r.querySelector(".mname").textContent.toLowerCase().includes(q);
       r.style.display = hit ? "" : "none";
