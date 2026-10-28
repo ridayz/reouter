@@ -512,8 +512,8 @@
   }
   function modelTableHTML() {
     const items = allModels();
-    const head = '<thead><tr><th>Model</th><th>Provider</th><th>Kualitas</th><th>Kecepatan</th><th class="r">Harga / 1M</th><th>Status</th></tr></thead><tbody>';
-    if (!items.length) return head + '<tr><td colspan="6" style="text-align:center;color:#6b6b6b;padding:40px">Belum ada model aktif. <a href="#/setup" style="color:#c4b5fd">Tambah provider</a> dulu.</td></tr></tbody>';
+    const head = '<thead><tr><th>Model</th><th>Provider</th><th>Kualitas</th><th>Kecepatan</th><th class="r">Harga / 1M</th><th>Status</th><th style="text-align:right">Aksi</th></tr></thead><tbody>';
+    if (!items.length) return head + '<tr><td colspan="7" style="text-align:center;color:#6b6b6b;padding:40px">Belum ada model aktif. <a href="#/setup" style="color:#c4b5fd">Tambah provider</a> dulu.</td></tr></tbody>';
     return (
       head +
       items
@@ -526,6 +526,7 @@
             <td>${inf.speed ? "⚡ " + inf.speed + " tok/s" : "—"}</td>
             <td class="r" style="color:#a3a3a3">${inf.known ? money(inf.priceIn) + " / " + money(inf.priceOut) : "—"}</td>
             <td>${pill(p)}</td>
+            <td style="text-align:right"><button class="btn sm danger" data-delmodel data-pid="${esc(p.id)}" data-m="${esc(m)}" title="Hapus ${esc(m)} dari daftar aktif">Hapus</button></td>
           </tr>`;
         })
         .join("") +
@@ -823,6 +824,28 @@ aider --openai-api-base "$OPENAI_BASE_URL" \\
 
   /* ------------------------------ Delegated events ------------------------------ */
   document.addEventListener("click", async (e) => {
+    // Hapus 1 model dari daftar aktif (menu Model Aktif) = uncheck dari provider
+    const delBtn = e.target.closest("[data-delmodel]");
+    if (delBtn) {
+      const pid = delBtn.dataset.pid;
+      const m = delBtn.dataset.m;
+      const p = S.providers.find((x) => x.id === pid);
+      if (!p) return;
+      if (!confirm(`Hapus model ${m} dari daftar aktif?`)) return;
+      delBtn.disabled = true;
+      const picked = (p.picked || []).filter((x) => x !== m);
+      p.picked = picked;
+      try {
+        await api(`/providers/${p.id}`, { method: "PATCH", body: { picked } });
+        toast(`${m} dihapus dari aktif`, "info");
+        await refresh();
+      } catch (err) {
+        p.picked = [...(p.picked || []), m];
+        toast(err.message, "bad");
+        delBtn.disabled = false;
+      }
+      return;
+    }
     const mode = e.target.closest("#modeSwitch [data-mode]");
     if (mode) {
       try {
